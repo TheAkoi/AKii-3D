@@ -1,0 +1,6 @@
+Flask
+pandas
+joblib
+scikit-learn
+lightgbm
+openpyxl  # for Excel download support

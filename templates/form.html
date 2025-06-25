@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <meta charset="UTF-8" />
+  <title>Drug Release % Predictor for 3D Printlets</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <style>
+    body {
+      background-color: var(--bs-body-bg);
+      color: var(--bs-body-color);
+    }
+    .form-container {
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 30px;
+      background-color: var(--bs-body-bg);
+      border-radius: 15px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+      border: 1px solid var(--bs-border-color-translucent);
+    }
+    .form-title {
+      margin-bottom: 25px;
+      text-align: center;
+    }
+    .predict-button {
+      display: block;
+      width: 100%;
+      padding: 12px;
+    }
+    .example-select {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Dark Mode Toggle -->
+<div class="d-flex justify-content-end p-3">
+  <div class="form-check form-switch">
+    <input class="form-check-input" type="checkbox" id="themeSwitch">
+    <label class="form-check-label" for="themeSwitch">Dark Mode</label>
+  </div>
+</div>
+
+<div class="container form-container">
+  <h2 class="form-title d-flex align-items-center justify-content-center">
+  <img src="{{ url_for('static', filename='Logos/Logo.png') }}" alt="Logo" style="height:120px; width:auto; margin-right:10px;">
+  A Tool for Predicting Drug Release in 3D Printed Drugs
+</h2>
+
+
+
+  <!-- Example Selector -->
+  <div class="example-select">
+    <label for="exampleSelect">Fill with an Example:</label>
+    <select id="exampleSelect" class="form-select w-auto">
+      <option value="">Select Example</option>
+      <option value="example1">Example 1</option>
+    </select>
+  </div>
+
+  {% if error %}
+  <div class="alert alert-danger">{{ error }}</div>
+  {% endif %}
+
+  <!-- Load CSV Form -->
+  <form id="csvLoaderForm" method="POST" action="/load" enctype="multipart/form-data"></form>
+
+  <form method="POST" action="/predict" enctype="multipart/form-data" id="predictForm">
+    <div class="mb-3">
+      <label for="csv_file" class="form-label">Upload CSV (optional):</label>
+      <div class="input-group">
+        <input type="file" class="form-control" name="csv_file" id="csv_file" accept=".csv" form="csvLoaderForm">
+        <button class="btn btn-outline-secondary" type="submit" form="csvLoaderForm">Load</button>
+      </div>
+    </div>
+
+    <div class="row">
+      {% for feature in features %}
+      <div class="col-md-6 mb-3">
+        <label for="{{ feature }}" class="form-label">{{ feature }}</label>
+        {% if feature == 'Time(mins)' %}
+        <input type="text" class="form-control" name="{{ feature }}"
+               placeholder="e.g. 5, 10, 15" value="{{ form_values[feature] if form_values and feature in form_values else '' }}" />
+        {% else %}
+        <input type="number" step="any" class="form-control" name="{{ feature }}"
+               value="{{ form_values[feature] if form_values and feature in form_values else '' }}" />
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="form-check mb-3">
+      <input class="form-check-input" type="checkbox" name="include_inputs" id="include_inputs"
+             {% if include_inputs %}checked{% endif %}>
+      <label class="form-check-label" for="include_inputs">
+        Include input data in downloads
+      </label>
+    </div>
+
+    <button type="submit" class="btn btn-primary predict-button">Predict</button>
+  </form>
+
+  {% if predictions %}
+<div id="predictionOutput">
+  <h3 class="mt-4">Predictions</h3>
+  <table class="table table-bordered mt-2">
+    <thead>
+      <tr><th>Time (mins)</th><th>Predicted Release %</th></tr>
+    </thead>
+    <tbody>
+      {% for time, pred in predictions %}
+      <tr><td>{{ time }}</td><td>{{ "%.2f"|format(pred) }}%</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- Chart Container -->
+  <canvas id="releaseChart" height="120" class="mt-4"></canvas>
+</div>
+{% endif %}
+
+
+  {% if show_download %}
+  <div class="form-check mt-3">
+    <input class="form-check-input" type="checkbox" id="include_inputs_download" disabled {% if include_inputs %}checked{% endif %}>
+    <label class="form-check-label" for="include_inputs_download">
+      Include input data in downloads (selection preserved from form)
+    </label>
+  </div>
+  <div class="mt-3">
+    <a href="/download/csv" class="btn btn-outline-secondary me-2">Download CSV</a>
+    <a href="/download/xlsx" class="btn btn-outline-success">Download XLSX</a>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+  const savedTheme = localStorage.getItem('theme') || 'light';
+  document.documentElement.setAttribute('data-bs-theme', savedTheme);
+  document.getElementById('themeSwitch').checked = savedTheme === 'dark';
+
+  document.getElementById('themeSwitch').addEventListener('change', () => {
+    const newTheme = document.getElementById('themeSwitch').checked ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-bs-theme', newTheme);
+    localStorage.setItem('theme', newTheme);
+  });
+
+  const examples = {
+    "example1": {
+      "MW": 284.74, "LogP": 2.82, "HBD": 1, "HBA": 2, "Intrinsic_Solubility": -4.71, "pKa": 2.92,
+      "Melting_Point_Celsius": 130.7, "API_(%)": 10, "HPC-SSL(%)": 0, "Triacetin(%)": 0,
+      "Erythritol(%)": 0, "Croscarmellose_sodium(%)": 0, "Crospovidone(%)": 0, "Maltitol(%)": 0,
+      "Microcrystalline_cellulose%": 0, "Poly-E-caprolactone(PCL)%": 0, "PEG_6000%": 0, "PEG_400%": 0,
+      "HPMC_K4M%": 0, "HPMC_E10M%": 0, "HPMC_K100M%": 0, "HPMCAS%": 0, "BaSO4%": 0, "Mannitol%": 0,
+      "Triethyl_citrate(TEC)%": 0, "Tri-Calcium_phosphate(TCP)%": 0, "EudragitRSPO%": 0,
+      "EudragitRLPO%": 0, "Eudragit_E%": 0, "Soluplus%": 0, "HPMC_E5%": 0, "PVA%": 90, "Water%": 0,
+      "EC%": 0, "HPC%": 0, "PEG 4000%": 0, "MgS%": 0, "KVA17PF%": 0, "KVA30%": 0,
+      "Copovidone_KVA64%": 0, "Eudragit_E_PO%": 0, "Maltodextrin%": 0, "Xylitol%": 0,
+      "Programmed_infill_density": 100, "Layer_height_(mm)": 0.2, "First_Layer_Height _(mm)": 0.2,
+      "Weight_ (mg)": 104.4, "X_dimension_ (mm)": 6.4, "Y_dimension_(mm)": 6.4,
+      "Z_dimension_(mm)": 3, "Surface_area_ (mm2)": 124.6, "SA/Weight(mm2/mg)": 1.19,
+      "Volume_mm3": 96.5, "SA/V_Ratio_mm2": 1.29, "Density_(mg/mm3)": 1.1, "Time(mins)": "15"
+    }
+  };
+
+  document.getElementById('exampleSelect').addEventListener('change', function () {
+    const selected = this.value;
+    const form = document.getElementById('predictForm');
+    if (examples[selected]) {
+      Object.entries(examples[selected]).forEach(([key, val]) => {
+        const input = form.querySelector(`[name="${key}"]`);
+        if (input) input.value = val;
+      });
+    }
+  });
+
+  window.addEventListener('DOMContentLoaded', () => {
+    const output = document.getElementById('predictionOutput');
+    if (output) {
+      output.scrollIntoView({ behavior: 'smooth' });
+    }
+  });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  {% if predictions %}
+  const chartLabels = {{ predictions | map(attribute=0) | list | tojson }};
+  const chartData = {{ predictions | map(attribute=1) | list | tojson }};
+
+  const ctx = document.getElementById('releaseChart').getContext('2d');
+
+  // Create a gradient background
+  const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+  gradient.addColorStop(0, 'rgba(0, 123, 255, 0.4)');
+  gradient.addColorStop(1, 'rgba(0, 123, 255, 0.05)');
+
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: chartLabels,
+      datasets: [{
+        label: 'Predicted Drug Release %',
+        data: chartData,
+        fill: true,
+        backgroundColor: gradient,
+        borderColor: '#007bff',
+        borderWidth: 2,
+        pointBackgroundColor: '#007bff',
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        tension: 0.3
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {
+          display: true,
+          labels: {
+            color: getComputedStyle(document.body).color,
+            font: { size: 14 }
+          }
+        },
+        title: {
+          display: true,
+          text: 'Drug Release % vs Time',
+          color: getComputedStyle(document.body).color,
+          font: {
+            size: 18,
+            weight: 'bold',
+            family: 'Arial'
+          },
+          padding: { top: 10, bottom: 20 }
+        },
+        tooltip: {
+          callbacks: {
+            label: context => ` ${context.parsed.y.toFixed(2)}%`
+          }
+        }
+      },
+      scales: {
+        x: {
+          title: {
+            display: true,
+            text: 'Time (mins)',
+            color: getComputedStyle(document.body).color,
+            font: { size: 14 }
+          },
+          ticks: {
+            color: getComputedStyle(document.body).color
+          },
+          grid: {
+            color: 'rgba(200,200,200,0.1)'
+          }
+        },
+        y: {
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: 'Release %',
+            color: getComputedStyle(document.body).color,
+            font: { size: 14 }
+          },
+          ticks: {
+            color: getComputedStyle(document.body).color
+          },
+          grid: {
+            color: 'rgba(200,200,200,0.1)'
+          },
+          suggestedMax: 110
+        }
+      }
+    }
+  });
+  {% endif %}
+</script>
+
+</body>
+</html>
