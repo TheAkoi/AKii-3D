@@ -44,3 +44,6 @@ Flask will boot in development mode, binding by default to `http://127.0.0.1:500
 •	Or upload a CSV with your data.
 
 •	All numeric fields must be valid, and the composition sum must not exceed 100%.
+
+
+You can Cite this work [Here](.com)
