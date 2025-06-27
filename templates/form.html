@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <meta charset="UTF-8" />
   <title>Drug Release % Predictor for 3D Printlets</title>
@@ -49,11 +50,9 @@
 
 <div class="container form-container">
   <h2 class="form-title d-flex align-items-center justify-content-center">
-  <img src="{{ url_for('static', filename='Logos/Logo.png') }}" alt="Logo" style="height:120px; width:auto; margin-right:10px;">
-  A Tool for Predicting Drug Release in 3D Printed Drugs
-</h2>
-
-
+    <img src="{{ url_for('static', filename='Logos/Logo.png') }}" alt="Logo" style="height:120px; width:auto; margin-right:10px;">
+    A Tool for Predicting Drug Release in 3D Printed Drugs
+  </h2>
 
   <!-- Example Selector -->
   <div class="example-select">
@@ -107,24 +106,23 @@
   </form>
 
   {% if predictions %}
-<div id="predictionOutput">
-  <h3 class="mt-4">Predictions</h3>
-  <table class="table table-bordered mt-2">
-    <thead>
-      <tr><th>Time (mins)</th><th>Predicted Release %</th></tr>
-    </thead>
-    <tbody>
-      {% for time, pred in predictions %}
-      <tr><td>{{ time }}</td><td>{{ "%.2f"|format(pred) }}%</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div id="predictionOutput">
+    <h3 class="mt-4">Predictions</h3>
+    <table class="table table-bordered mt-2">
+      <thead>
+        <tr><th>Time (mins)</th><th>Predicted Release %</th></tr>
+      </thead>
+      <tbody>
+        {% for time, pred in predictions %}
+        <tr><td>{{ time }}</td><td>{{ "%.2f"|format(pred) }}%</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
 
-  <!-- Chart Container -->
-  <canvas id="releaseChart" height="120" class="mt-4"></canvas>
-</div>
-{% endif %}
-
+    <!-- Chart Container -->
+    <div id="releasePlot" class="mt-4" style="height:400px;width: 100%;"></div>
+  </div>
+  {% endif %}
 
   {% if show_download %}
   <div class="form-check mt-3">
@@ -149,6 +147,13 @@
     const newTheme = document.getElementById('themeSwitch').checked ? 'dark' : 'light';
     document.documentElement.setAttribute('data-bs-theme', newTheme);
     localStorage.setItem('theme', newTheme);
+
+    // Re-render Plotly chart if it exists
+    if (document.getElementById('releasePlot') && typeof Plotly !== 'undefined') {
+     setTimeout(() => {
+          location.reload(); // simplest solution: reloads and uses updated theme styles
+      }, 100); // small delay to allow theme to apply before reload
+    }
   });
 
   const examples = {
@@ -165,7 +170,7 @@
       "Programmed_infill_density": 100, "Layer_height_(mm)": 0.2, "First_Layer_Height _(mm)": 0.2,
       "Weight_ (mg)": 104.4, "X_dimension_ (mm)": 6.4, "Y_dimension_(mm)": 6.4,
       "Z_dimension_(mm)": 3, "Surface_area_ (mm2)": 124.6, "SA/Weight(mm2/mg)": 1.19,
-      "Volume_mm3": 96.5, "SA/V_Ratio_mm2": 1.29, "Density_(mg/mm3)": 1.1, "Time(mins)": "15"
+      "Volume_mm3": 96.5, "SA/V_Ratio_mm2": 1.29, "Density_(mg/mm3)": 1.1, "Time(mins)": "5 15 20 30 45 60 90 120 180"
     }
   };
 
@@ -189,96 +194,120 @@
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<!-- replacing Chart.js with plotly to fix  sort Time(mins) as numeric -->
 <script>
   {% if predictions %}
-  const chartLabels = {{ predictions | map(attribute=0) | list | tojson }};
-  const chartData = {{ predictions | map(attribute=1) | list | tojson }};
+  let labels = {{ predictions | map(attribute=0) | list | tojson }};
+  let values = {{ predictions | map(attribute=1) | list | tojson }};
 
-  const ctx = document.getElementById('releaseChart').getContext('2d');
+  const paired = labels.map((x, i) => [parseFloat(x), values[i]]);
+  paired.sort((a, b) => a[0] - b[0]);
 
-  // Create a gradient background
-  const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-  gradient.addColorStop(0, 'rgba(0, 123, 255, 0.4)');
-  gradient.addColorStop(1, 'rgba(0, 123, 255, 0.05)');
+  const sortedLabels = paired.map(p => p[0]);
+  const sortedValues = paired.map(p => p[1]);
 
-  new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: chartLabels,
-      datasets: [{
-        label: 'Predicted Drug Release %',
-        data: chartData,
-        fill: true,
-        backgroundColor: gradient,
-        borderColor: '#007bff',
-        borderWidth: 2,
-        pointBackgroundColor: '#007bff',
-        pointRadius: 4,
-        pointHoverRadius: 6,
-        tension: 0.3
-      }]
+  const primaryColor = '#0d6efd'; // Bootstrap primary blue
+const textColor = getComputedStyle(document.body).color;
+
+const trace = {
+  x: sortedLabels,
+  y: sortedValues,
+  type: 'scatter',
+  mode: 'lines+markers',
+  line: {
+    color: primaryColor,
+    width: 2,
+    shape: 'spline', // smooth curve
+    smoothing: 0.5
+  },
+  fill: 'tozeroy',
+  fillcolor: 'rgba(13, 110, 253, 0.2)', // subtle transparent fill
+  marker: {
+    color: primaryColor,
+    size: 10,
+    line: {
+      color: 'orange',
+      width: 0
     },
-    options: {
-      responsive: true,
-      plugins: {
-        legend: {
-          display: true,
-          labels: {
-            color: getComputedStyle(document.body).color,
-            font: { size: 14 }
-          }
-        },
-        title: {
-          display: true,
-          text: 'Drug Release % vs Time',
-          color: getComputedStyle(document.body).color,
-          font: {
-            size: 18,
-            weight: 'bold',
-            family: 'Arial'
-          },
-          padding: { top: 10, bottom: 20 }
-        },
-        tooltip: {
-          callbacks: {
-            label: context => ` ${context.parsed.y.toFixed(2)}%`
-          }
-        }
-      },
-      scales: {
-        x: {
-          title: {
-            display: true,
-            text: 'Time (mins)',
-            color: getComputedStyle(document.body).color,
-            font: { size: 14 }
-          },
-          ticks: {
-            color: getComputedStyle(document.body).color
-          },
-          grid: {
-            color: 'rgba(200,200,200,0.1)'
-          }
-        },
-        y: {
-          beginAtZero: true,
-          title: {
-            display: true,
-            text: 'Release %',
-            color: getComputedStyle(document.body).color,
-            font: { size: 14 }
-          },
-          ticks: {
-            color: getComputedStyle(document.body).color
-          },
-          grid: {
-            color: 'rgba(200,200,200,0.1)'
-          },
-          suggestedMax: 110
-        }
-      }
-    }
-  });
+    symbol: 'circle'
+  },
+  hoverinfo: 'x+y',  // fallback if hovertemplate is not used
+
+hoverlabel: {
+  bgcolor: 'black',  // background color (e.g., theme primary color)
+  font: {
+    color: '#fff',        // white text for contrast
+    family: 'Arial, sans-serif',
+    size: 14
+  },
+  bordercolor: primaryColor,  // subtle gray border
+  align: 'center',                 // center-align text
+  namelength: 0                    // hide trace name
+},
+
+hovertemplate: `
+  Time: %{x} min<br>
+  Release: %{y:.2f}%<extra></extra>
+`
+};
+
+const layout = {
+title: {
+  text: 'Predicted Drug Release% vs Time in Minutes',
+  font: { size: 24, family: 'Arial, sans-serif', color: textColor },
+  xref: 'paper',
+  x: 0.5, // centers the title horizontally
+  xanchor: 'center', // ensures alignment is centered at x
+  pad: { t: 10, b: 10 }
+  },
+  xaxis: {
+    title: {
+      text: 'Time (mins)',
+      font: { size: 16, color: textColor, family: 'Arial, sans-serif' }
+    },
+    tickfont: { color: textColor },
+    showgrid: true,
+    gridcolor: 'rgba(13, 110, 253, 0.1)',
+    zeroline: false,
+    zerolinecolor: 'rgba(0,0,0,0.1)',
+    zerolinewidth: 1,
+    mirror: 'ticks',
+    ticks: 'outside',
+    showline: true,
+    linecolor: 'rgba(0,0,0,0.15)'
+  },
+  yaxis: {
+    title: {
+      text: 'Predicted Release %',
+      font: { size: 16, color: textColor, family: 'Arial, sans-serif' }
+    },
+    tickfont: { color: textColor },
+    showgrid: true,
+    gridcolor: 'rgba(13, 110, 253, 0.1)',
+    zeroline: false,
+    zerolinecolor: 'rgba(0,0,0,0.1)',
+    zerolinewidth: 1,
+    mirror: 'ticks',
+    ticks: 'outside',
+    showline: true,
+    linecolor: 'rgba(0,0,0,0.15)'
+  },
+  margin: { t: 80, r: 30, b: 70, l: 70 },
+  paper_bgcolor: 'transparent',
+  plot_bgcolor: 'transparent',
+  showlegend: false,
+  hovermode: 'x unified',
+  dragmode: 'zoom',
+  // responsive is set in newPlot options
+  font: {
+    family: 'Arial, sans-serif',
+    size: 14,
+    color: textColor
+  }
+};
+
+  Plotly.newPlot('releasePlot', [trace], layout, { responsive: true, displayModeBar: false });
   {% endif %}
 </script>
 
